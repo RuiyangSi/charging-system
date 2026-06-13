@@ -136,8 +136,12 @@ class BillingEngine:
     """计费引擎（纯虚构领域服务）：分时电价计算，与业务编排解耦。"""
 
     def compute_charge_fee(self, start: datetime, end: datetime, amount: float,
-                           rule: BillingRule) -> Tuple[float, List[dict]]:
-        """按时段切分 [start, end)，假定恒功率充入 amount 度，返回(充电费, 分时明细)。"""
+                           rule: BillingRule, round_segments: bool = True
+                           ) -> Tuple[float, List[dict]]:
+        """按时段切分 [start, end)，假定恒功率充入 amount 度，返回(充电费, 分时明细)。
+        round_segments=True（详单/账单）：每段先取整，保证 Σ(分段)==充电费小计；
+        round_segments=False（实时费用）：只对总额取整，与连续积分一致（避免双重取整丢分，
+        如 V5 在 08:20 的当前费用应为 27.00 而非 26.99）。"""
         total_h = (end - start).total_seconds() / 3600.0
         if total_h <= 0 or amount <= 0:
             return 0.0, []
@@ -151,12 +155,13 @@ class BillingEngine:
             hours = (seg_end - t).total_seconds() / 3600.0
             kwh = power * hours
             price = rule.get_price(kind)
-            fee = round(kwh * price, 2)   # 分段费用先取整，保证 Σ(分段) == 充电费小计
+            raw = kwh * price
+            fee = round(raw, 2) if round_segments else raw
             fee_total += fee
             segments.append({
                 "kind": kind, "label": SEG_LABELS[kind],
                 "from": t.strftime("%H:%M"), "to": seg_end.strftime("%H:%M"),
-                "kwh": round(kwh, 2), "price": price, "fee": fee,
+                "kwh": round(kwh, 2), "price": price, "fee": round(fee, 2),
             })
             t = seg_end
         return round(fee_total, 2), segments
@@ -185,7 +190,8 @@ class BillingEngine:
         if charged >= cr.requested_amount and power > 0:  # 已充满：截到理论完成时刻
             end = cr.charging_start_time + timedelta(hours=cr.requested_amount / power)
         duration = max((end - cr.charging_start_time).total_seconds() / 3600.0, 0.0)
-        charge_fee, _ = self.compute_charge_fee(cr.charging_start_time, end, charged, rule)
+        charge_fee, _ = self.compute_charge_fee(cr.charging_start_time, end, charged, rule,
+                                                round_segments=False)
         service_fee = round(self.compute_service_fee(charged, rule), 2)
         charge_fee = round(charge_fee, 2)
         return {

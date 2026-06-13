@@ -157,4 +157,4 @@ def main(policy: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "manual")
+    main(sys.argv[1] if len(sys.argv) > 1 else "requeue")

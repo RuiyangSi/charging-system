@@ -1,0 +1,24 @@
+# ---- Python (backend) ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# 运行时 SQLite 数据库（启动时自动重建，含 CREATE TABLE IF NOT EXISTS）
+backend/data/
+
+# ---- Node / 前端 ----
+node_modules/
+
+# 说明：frontend/dist 为「方式 A 单端口运行」所需的构建产物，README 依赖它，故保留入库。
+# 如需改为不入库，取消下一行注释即可：
+# frontend/dist/
+
+# ---- 编辑器 / 系统 ----
+.DS_Store
+.idea/
+.vscode/
+*.log

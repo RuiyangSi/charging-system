@@ -13,6 +13,19 @@ const STATE_BADGE = {
   WAITING: 'b-idle', QUEUING: 'b-on', CHARGING: 'b-on',
 }
 
+const hmsToSeconds = (hms = '00:00:00') => {
+  const [h = 0, m = 0, s = 0] = String(hms).split(':').map(Number)
+  return Math.max(0, Math.min(86399, h * 3600 + m * 60 + s))
+}
+
+const secondsToHms = (total) => {
+  const safe = Math.max(0, Math.min(86399, Number(total) || 0))
+  const h = Math.floor(safe / 3600)
+  const m = Math.floor((safe % 3600) / 60)
+  const s = safe % 60
+  return [h, m, s].map(v => String(v).padStart(2, '0')).join(':')
+}
+
 function PileCard({ p }) {
   const [cls, dotColor] = PILE_BADGE[p.workingState] || ['b-idle', '#94a3b8']
   const cardCls = p.workingState === '充电中' ? 'charging'
@@ -52,6 +65,7 @@ function PileCard({ p }) {
 export default function MonitorPage() {
   const { data: ov, error, refresh } = usePoll(() => get('/admin/overview'), 1000)
   const [timeInput, setTimeInput] = useState('')
+  const [timeDrag, setTimeDrag] = useState(null)
   const [toast, setToast] = useState(null)
   const flash = (text, err) => { setToast({ text, err }); setTimeout(() => setToast(null), 3200) }
 
@@ -67,6 +81,17 @@ export default function MonitorPage() {
     try { await put('/admin/clock', { time: timeInput }); setTimeInput(''); refresh(); flash('系统时间已设置') }
     catch (e) { flash(e.message, true) }
   }
+  const setTimeBySeconds = async (seconds) => {
+    const hms = secondsToHms(seconds)
+    try {
+      await put('/admin/clock', { time: hms })
+      setTimeInput('')
+      refresh()
+      flash(`系统时间已设置为 ${hms}`)
+    } catch (e) {
+      flash(e.message, true)
+    }
+  }
   const resetSystem = async () => {
     if (window.confirm('重置系统？将清空所有请求/账单/故障记录，计费规则回到默认值，时钟归位到起始时刻（验收开跑前使用）。')) {
       try { await post('/admin/reset', { wipeHistory: true }); refresh(); flash('系统已重置') }
@@ -75,6 +100,9 @@ export default function MonitorPage() {
   }
 
   const dispatchLabel = { default: '默认按序叫号', single_optimal: '单次调度·总时长最短(Bonus)', batch_optimal: '批量调度·总时长最短(Bonus)' }[schedule.dispatchMode]
+  const clockSeconds = hmsToSeconds(clock.hms)
+  const sliderSeconds = timeDrag ?? clockSeconds
+  const sliderLabel = secondsToHms(sliderSeconds)
 
   return (
     <>
@@ -96,6 +124,23 @@ export default function MonitorPage() {
                    onKeyDown={e => e.key === 'Enter' && setTime()} />
             <button className="btn-sm btn-ghost" onClick={setTime}>设置时间</button>
             <button className="btn-sm btn-stop" onClick={resetSystem}>重置系统</button>
+          </div>
+          <div className="time-slider">
+            <div className="time-slider-top">
+              <span>00:00:00</span>
+              <b>{sliderLabel}</b>
+              <span>23:59:59</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="86399"
+              step="1"
+              value={sliderSeconds}
+              onChange={e => setTimeDrag(Number(e.target.value))}
+              onMouseUp={e => { setTimeDrag(null); setTimeBySeconds(Number(e.currentTarget.value)) }}
+              onTouchEnd={e => { setTimeDrag(null); setTimeBySeconds(Number(e.currentTarget.value)) }}
+            />
           </div>
         </div>
       </div>

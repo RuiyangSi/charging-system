@@ -238,6 +238,11 @@ input[type=range].slider { width: 100%; accent-color: var(--emerald); height: 26
   background: rgba(255,255,255,.06); color: #e2e8f0; border: 1px solid rgba(255,255,255,.14);
   border-radius: 9px; padding: 6px 9px; font-size: 12px; font-family: var(--mono); outline: none; }
 .clockbar input { width: 96px; }
+.time-slider { width: min(560px, 100%); margin-top: 8px; }
+.time-slider-top { display: flex; justify-content: space-between; align-items: center; font-family: var(--mono);
+  font-size: 11px; color: var(--muted); margin: 0 2px 6px; gap: 10px; }
+.time-slider-top b { color: var(--emerald); font-size: 12px; }
+.time-slider input[type=range] { width: 100%; accent-color: var(--emerald); height: 26px; }
 
 /* KPI */
 .kpis { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; margin-bottom: 18px; }

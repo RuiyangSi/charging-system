@@ -36,7 +36,7 @@ class PileService:
         pile = self.station.find_pile(pile_id)
         pile.run()
         # 多出可用车位，立即触发叫号
-        self.schedule_service.dispatch(pile.mode)
+        self.schedule_service.try_auto_dispatch()
         return pile.snapshot(self.clock.now())
 
     # ---- 事件 13：powerOff 关闭充电桩 ----

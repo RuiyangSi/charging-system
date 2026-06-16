@@ -21,13 +21,24 @@ export default function OpsPage() {
   return (
     <>
       <div className="a-top">
-        <h1>运维管理<small>充电桩 上电/运行/关闭 · 故障注入与恢复 · 调度策略</small></h1>
+        <h1>运维管理<small>充电桩 上电/运行/关闭 · 故障注入与恢复 · 两类调度策略分别作用于不同场景</small></h1>
+        <div className="right">
+          <div className="clockbar">
+            <select value={cfg?.faultStrategy || 'priority'}
+                    onChange={e => setCfg({ faultStrategy: e.target.value }, e.target.value === 'time_order'
+                      ? '故障调度方法已切换：时间顺序调度'
+                      : '故障调度方法已切换：优先级调度')}>
+              <option value="priority">故障处理方式：优先级调度</option>
+              <option value="time_order">故障处理方式：时间顺序调度</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div className="panel">
         <div className="panel-h">
           <h2><span className="bar" />充电桩运维（powerOn / runPile / powerOff）</h2>
-          <span className="hint">关闭运行中的桩：排队车回等候区队首；充电车辆充完延迟关闭</span>
+          <span className="hint">注入故障时使用“故障处理方式”；普通叫号策略此时暂停</span>
         </div>
         <table className="tbl">
           <thead>
@@ -49,7 +60,7 @@ export default function OpsPage() {
                     <button className="btn-sm btn-run" onClick={() => run(() => post(`/pile/${p.pileId}/run`), `${p.pileId} 已运行，开始接受调度`)}>运行</button>}
                   {p.status === 'RUNNING' && <>
                     <button className="btn-sm btn-ghost" style={{ marginRight: 8 }}
-                            onClick={() => run(() => post(`/pile-event/${p.pileId}/fault`, {}), `${p.pileId} 故障已上报，按「${cfg?.faultStrategy === 'time_order' ? '时间顺序' : '优先级'}」再调度`)}>
+                            onClick={() => run(() => post(`/pile-event/${p.pileId}/fault`, { strategy: cfg?.faultStrategy || 'priority' }), `${p.pileId} 故障已上报，按「${cfg?.faultStrategy === 'time_order' ? '时间顺序' : '优先级'}」再调度`)}>
                       注入故障</button>
                     <button className="btn-sm btn-stop" onClick={() => run(() => post(`/pile/${p.pileId}/power-off`), `${p.pileId} 关闭指令已执行`)}>关闭</button>
                   </>}
@@ -68,12 +79,12 @@ export default function OpsPage() {
       <div className="flexrow">
         <div className="panel" style={{ marginBottom: 0 }}>
           <div className="panel-h">
-            <h2><span className="bar" />调度策略（dispatchMode）</h2>
-            <span className="hint">含 2 个 Bonus 扩展调度</span>
+            <h2><span className="bar" />普通叫号策略（dispatchMode）</h2>
+            <span className="hint">仅作用于正常从等候区叫号进入充电区的场景</span>
           </div>
           <div className="opt-group">
             {[
-              ['default', '默认按序叫号', '按进入等候区先后叫号，为每辆车分配（等待时长+充电时长）最短的同模式桩。'],
+              ['default', '默认普通叫号', '按进入等候区先后叫号，为每辆车分配（等待时长+充电时长）最短的同模式桩。'],
               ['single_optimal', '单次调度总充电时长最短（Bonus）', '同时空出 k 个车位时，对队首 k 辆车枚举全部分配方案，使总充电时长最短。'],
               ['batch_optimal', '批量调度总充电时长最短（Bonus）', '仅当 等候区车数 == 空位总数 时整批调度（跨模式搭配罚∞自动排除）；其余时刻车辆在等候区等待批量时机。'],
             ].map(([v, b, s]) => (
@@ -88,12 +99,12 @@ export default function OpsPage() {
 
         <div className="panel" style={{ marginBottom: 0 }}>
           <div className="panel-h">
-            <h2><span className="bar" />故障再调度策略（reportFault）</h2>
-            <span className="hint">骨架：暂停叫号 → 重排 → 恢复叫号</span>
+            <h2><span className="bar" />故障处理方式（faultStrategy）</h2>
+            <span className="hint">仅在注入故障/故障恢复时使用；会暂停普通叫号</span>
           </div>
           <div className="opt-group">
             {[
-              ['priority', '优先级调度（验收默认）', '暂停等候区叫号，优先把坏桩队列里的车调度到同类型最优桩，安置不下的回等候区队首。'],
+              ['priority', '优先级调度（验收默认）', '暂停等候区叫号，优先把坏桩队列里的车调度到同类型最优桩；安置不下的进入故障重调度队列，不占普通等候区容量。'],
               ['time_order', '时间顺序调度', '合并同类型所有桩中未充电的车，按排队号公平重排；正在充电的好桩车辆不动。'],
             ].map(([v, b, s]) => (
               <label key={v} className={'opt-line' + (cfg?.faultStrategy === v ? ' on' : '')}>

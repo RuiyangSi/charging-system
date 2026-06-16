@@ -26,6 +26,7 @@ class ScheduleService:
         self.fault_repo = fault_repo
         self.dispatch_paused = False
         self._fault_seq = 0
+        self.priority_waiting: List[ChargingRequest] = []
 
     # ---- 叫号暂停/恢复（故障调度的事务边界）----
     def pause_waiting_area_dispatch(self) -> None:
@@ -42,14 +43,32 @@ class ScheduleService:
             return []
         if self.config.dispatchMode == "batch_optimal":
             return self.batch_dispatch() or []
-        moved: List[dict] = []
+        moved: List[dict] = self.dispatch_priority_waiting()
         for mode in (ChargeMode.FAST, ChargeMode.TRICKLE):
             moved += self.dispatch(mode)
+        return moved
+
+    def dispatch_priority_waiting(self) -> List[dict]:
+        """故障/恢复产生的待重调度车辆，不占普通等候区容量，但优先叫号。"""
+        moved: List[dict] = []
+        now = self.clock.now()
+        remaining: List[ChargingRequest] = []
+        for cr in self.priority_waiting:
+            pile = self.scheduler.assign_pile(cr, self.station.charging_area.get_all_piles(), now)
+            if pile is None:
+                remaining.append(cr)
+                continue
+            self._place(cr, pile)
+            cr.priority_waiting = False
+            moved.append({"carId": cr.car_id, "to": pile.pile_id})
+        self.priority_waiting = remaining
         return moved
 
     def dispatch(self, mode: ChargeMode) -> List[dict]:
         """按进入等候区先后从对应模式等待队列调入车辆，分配(等待+充电)最短的桩。"""
         if self.dispatch_paused:
+            return []
+        if self.priority_waiting:
             return []
         if self.config.dispatchMode == "batch_optimal":
             # 批量模式：仅当 等候区车数==空位总数 时整批最优调度（设计 Alt[m==n]）
@@ -75,6 +94,7 @@ class ScheduleService:
     def _place(self, cr: ChargingRequest, pile) -> None:
         pile.add_to_queue(cr)
         cr.status = RequestStatus.QUEUING
+        cr.priority_waiting = False
         self.request_repo.save(cr)
 
     # ---- Bonus 19：单次调度总充电时长最短 ----
@@ -174,6 +194,7 @@ class ScheduleService:
                     # 可选策略：剩余电量重新入队，受灾车最高优先
                     crc.requested_amount = round(remaining, 4)
                     crc.status = RequestStatus.WAITING
+                    crc.priority_waiting = True
                     crc.pile_id = None
                     crc.charging_start_time = None
                     crc.actual_amount = None
@@ -224,12 +245,13 @@ class ScheduleService:
                 rec.plan.append({"carId": cr.car_id, "from": src, "to": target.pile_id})
             else:
                 leftovers.append(cr)
-                rec.plan.append({"carId": cr.car_id, "from": src, "to": "等候区队首"})
+                rec.plan.append({"carId": cr.car_id, "from": src, "to": "故障重调度队列"})
         for cr in leftovers:
             cr.status = RequestStatus.WAITING
+            cr.priority_waiting = True
             cr.pile_id = None
             self.request_repo.save(cr)
-        self.station.waiting_area.requeue_front_all(leftovers)
+        self.priority_waiting.extend(leftovers)
 
     # ---- 故障恢复（系统事件 recoverPile）----
     def handle_recovery(self, pile_id: str) -> dict:
@@ -269,10 +291,11 @@ class ScheduleService:
                         plan.append({"carId": cr.car_id, "to": target.pile_id})
                     else:
                         cr.status = RequestStatus.WAITING
+                        cr.priority_waiting = True
                         cr.pile_id = None
-                        self.station.waiting_area.requeue_front(cr)
+                        self.priority_waiting.append(cr)
                         self.request_repo.save(cr)
-                        plan.append({"carId": cr.car_id, "to": "等候区队首"})
+                        plan.append({"carId": cr.car_id, "to": "故障重调度队列"})
             finally:
                 self.resume_waiting_area_dispatch()
         else:

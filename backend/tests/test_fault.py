@@ -11,7 +11,7 @@ def _shut(ctx, *pile_ids):
 
 
 def test_fault_priority_requeue_front(ctx):
-    """优先级调度：无可用同型桩时，受灾排队车按原序插回等待队列【队首】。
+    """优先级调度：无可用同型桩时，受灾排队车进入故障重调度队列。
     本用例验证概要设计的 interruptPolicy=manual 路径（中断车置"已中断"由用户重新申请），
     故显式钉住 manual（系统默认已改为验收口径的 requeue）。"""
     ctx.config.data["interruptPolicy"] = "manual"
@@ -34,14 +34,16 @@ def test_fault_priority_requeue_front(ctx):
     assert bills[0]["totalFee"] == 12.0   # 10×0.4 + 10×0.8
     assert rec.interrupted == ["V1"] and rec.queued == ["V2", "V3"]
 
-    # 受灾排队车插回队首：V2 在 V4 之前
+    # 受灾排队车不挤占普通等候区容量，进入故障重调度队列；V4 仍在普通等候区
     wq = ctx.station.waiting_area.get_queue(
-        ctx.station.find_active_request("V2").mode)
-    assert [c.car_id for c in wq.get_cars()] == ["V2", "V3", "V4"]
+        ctx.station.find_active_request("V4").mode)
+    assert [c.car_id for c in ctx.schedule_service.priority_waiting] == ["V2", "V3"]
+    assert [c.car_id for c in wq.get_cars()] == ["V4"]
 
-    # 桩恢复服务后按队首顺序叫号
+    # 桩恢复服务后优先叫故障重调度队列
     ctx.pile_service.power_on("T2")
     ctx.pile_service.run_pile("T2")
+    ctx.step()
     ctx.step()
     assert ctx.charging_service.query_car_state("V2")["status"] == "CHARGING"
     assert ctx.charging_service.query_car_state("V2")["pileId"] == "T2"

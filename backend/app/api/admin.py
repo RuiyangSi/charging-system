@@ -233,6 +233,7 @@ def meta():
             "fastPower": c.FastPower,
             "tricklePower": c.TricklePower,
             "queueLen": c.ChargingQueueLen,
+            "waitingSpotsPerPile": max(int(c.ChargingQueueLen) - 1, 0),
             "waitingAreaSize": c.WaitingAreaSize,
             "rule": ctx.billing_service.rule.to_dict(),
             "clock": ctx.clock.snapshot(),

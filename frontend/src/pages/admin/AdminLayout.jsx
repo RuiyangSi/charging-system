@@ -37,7 +37,7 @@ export default function AdminLayout() {
         <div className="s-foot">
           充电站 · 波普特大学东区<br />
           {meta
-            ? <><b>{meta.fastPileNum} 快充 + {meta.tricklePileNum} 慢充</b> · 每桩 {meta.queueLen} 车位<br />
+            ? <><b>{meta.fastPileNum} 快充 + {meta.tricklePileNum} 慢充</b> · 每桩 {meta.waitingSpotsPerPile} 等待位 + 1 充电位<br />
                 等候区容量 {meta.waitingAreaSize}</>
             : '加载中…'}
         </div>

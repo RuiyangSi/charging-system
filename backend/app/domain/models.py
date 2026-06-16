@@ -37,6 +37,7 @@ class ChargingRequest:
         self.charging_start_time: Optional[datetime] = None
         self.end_time: Optional[datetime] = None
         self.actual_amount: Optional[float] = None
+        self.priority_waiting: bool = False
 
     def set_queue_number(self, number: str, seq: int) -> None:
         self.queue_number, self.queue_seq = number, seq
@@ -214,6 +215,7 @@ class ChargingPile:
             "powered": self.powered,
             "acceptNewRequest": self.accept_new_request,
             "queueCapacity": self.queue.capacity,
+            "waitingSpots": max(self.queue.capacity - 1, 0),
             "queueLen": self.queue.size(),
             "freeSpots": self.queue.free_spots(),
             "current": current.brief(now, self.power) if current else None,
@@ -289,8 +291,8 @@ class WaitingArea:
         return self.get_total_waiting_count() >= self.capacity
 
     def enqueue(self, cr: ChargingRequest) -> None:
-        # 等候区容量 N 为标称值（验收用例峰值排队会超过 N，原始需求亦为"可容纳任意数量车辆"），
-        # 故不在此硬性拒绝；容量仅用于界面展示与提示，超额车辆按到达先后继续排队叫号。
+        if self.is_full():
+            raise BusinessError(f"等候区已满，最多容纳 {self.capacity} 辆车等待")
         self.queues[cr.mode].add_last(cr)
 
     def move_to_queue(self, cr: ChargingRequest, new_mode: ChargeMode) -> None:
@@ -436,6 +438,8 @@ class ChargingStation:
 
     def get_queue_of(self, cr: ChargingRequest):
         """返回请求当前所在队列（等候区队列或充电桩队列）。"""
+        if getattr(cr, "priority_waiting", False):
+            return None
         if cr.status is RequestStatus.WAITING:
             return self.waiting_area.get_queue(cr.mode)
         if cr.pile_id:
@@ -443,6 +447,8 @@ class ChargingStation:
         return None
 
     def location_label(self, cr: ChargingRequest) -> str:
+        if getattr(cr, "priority_waiting", False):
+            return f"故障重调度队列·{cr.mode.label}"
         if cr.status is RequestStatus.WAITING:
             return f"等候区·{cr.mode.label}"
         if cr.status is RequestStatus.QUEUING:

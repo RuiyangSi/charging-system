@@ -43,23 +43,25 @@ def test_fast_area_fills_then_waiting(ctx):
     assert waiting[0]["location"] == "等候区·快充"
 
 
-def test_waiting_area_is_non_blocking(ctx):
-    """等候区容量 N 为标称值、不硬性拒绝（验收用例峰值排队会超过 N，
-    原始需求亦为"可容纳任意数量车辆"）：充电区占满后继续提交不抛错，全部进等候区排队。"""
+def test_waiting_area_capacity_blocks_when_full(ctx):
+    """等候区容量 N=10；充电区占满后，最多 10 辆车留在等候区继续排队。"""
     # 5 桩 × 3 位 = 15 进充电区
     for i in range(1, 16):
         submit(ctx, f"C{i}", "T" if i % 2 else "F", 10)
         ctx.step()
-    # 再提交 12 辆（超过 N=10），均不被拒绝
+    # 再提交 10 辆，刚好填满 N=10
+    for i in range(16, 26):
+        submit(ctx, f"C{i}", "T", 10)
+    assert ctx.station.waiting_area.get_total_waiting_count() == 10
+
+    # 第 11 辆等待车被拒绝
     rejected = 0
-    for i in range(16, 28):
-        try:
-            submit(ctx, f"C{i}", "T", 10)
-        except BusinessError:
-            rejected += 1
-    assert rejected == 0
-    waiting = ctx.station.waiting_area.get_total_waiting_count()
-    assert waiting == 12  # 全部进入等候区，容量 N=10 仅作展示提示
+    try:
+        submit(ctx, "C26", "T", 10)
+    except BusinessError:
+        rejected += 1
+    assert rejected == 1
+    assert ctx.station.waiting_area.get_total_waiting_count() == 10
 
 
 def test_queue_number_sequence(ctx):

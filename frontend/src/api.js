@@ -53,8 +53,10 @@ export function usePoll(fetcher, ms = 1000, deps = []) {
 
 export const fmtH = (h) => {
   if (h == null) return '—'
-  if (h < 1) return `${Math.round(h * 60)} min`
-  return `${h.toFixed(2)} h`
+  const totalSeconds = Math.max(0, Math.round(Number(h) * 3600))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}分${String(seconds).padStart(2, '0')}秒`
 }
 
 export const yuan = (v) => (v == null ? '—' : `¥ ${Number(v).toFixed(2)}`)

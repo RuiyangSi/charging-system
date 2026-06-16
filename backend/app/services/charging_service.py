@@ -33,6 +33,8 @@ class ChargingService:
             raise BusinessError("请求充电量必须大于 0")
         user = self.user_repo.ensure(car_id)
         now = self.clock.now()
+        if self.station.waiting_area.is_full():
+            raise BusinessError(f"等候区已满，最多容纳 {self.station.waiting_area.capacity} 辆车等待")
 
         # 创建请求（创建者：Service 持有初始数据）
         cr = ChargingRequest(self.station.next_request_id(), car_id, mode,
@@ -45,7 +47,7 @@ class ChargingService:
         cr.set_queue_number(number, seq)
         self.request_repo.save(cr)
         # 系统自动叫号
-        self.schedule_service.dispatch(mode)
+        self.schedule_service.try_auto_dispatch()
         return self.query_car_state(car_id)
 
     # ---- 事件 2：Modify_Amount 修改充电量 ----
@@ -85,8 +87,7 @@ class ChargingService:
         cr.modify_time = self.clock.now()
         self.request_repo.save(cr)
         # 新旧两模式调度局面均变化，各触发一次叫号
-        self.schedule_service.dispatch(old_mode)
-        self.schedule_service.dispatch(new_mode)
+        self.schedule_service.try_auto_dispatch()
         return self.query_car_state(car_id)
 
     # ---- 取消充电（含充电中提前结束）----
@@ -106,7 +107,7 @@ class ChargingService:
         cr.end_time = self.clock.now()
         self.station.release_active(cr)
         self.request_repo.save(cr)
-        self.schedule_service.dispatch(mode)  # 释放的资源立即叫号
+        self.schedule_service.try_auto_dispatch()  # 释放的资源立即叫号
         return {"carId": car_id, "status": cr.status.value, "statusLabel": cr.status.label}
 
     # ---- 事件 4：Query_Car_State 查看排队状态（纯查询）----
@@ -205,7 +206,7 @@ class ChargingService:
         if pile.status is PileStatus.RUNNING and not pile.accept_new_request:
             pile.shutdown()
         else:
-            self.schedule_service.dispatch(pile.mode)
+            self.schedule_service.try_auto_dispatch()
         result = cr.brief(now)
         result["bill"] = bill.to_dict()
         return result
